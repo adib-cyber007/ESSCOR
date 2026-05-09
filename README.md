@@ -1,5 +1,8 @@
 # ESSCOR
 
+<img width="1600" height="639" alt="image" src="https://github.com/user-attachments/assets/8febd492-49b8-45ef-b404-b457d9321762" />
+
+
 ## AI-Powered Financial Risk & Ecosystem Intelligence for Bags
 
 ESSCOR is an ecosystem intelligence and financial risk monitoring framework designed for the Bags ecosystem. It continuously analyzes liquidity movement, creator token activity, reward emissions, and wallet behavior to detect financial instability, ecosystem manipulation, and sustainability risks before damage occurs.
