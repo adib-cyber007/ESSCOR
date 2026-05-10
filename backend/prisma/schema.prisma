@@ -1,0 +1,76 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model EcosystemToken {
+  mint              String   @id
+  name              String?
+  symbol            String?
+  totalSupply       String?
+  royaltyPercentage Float?
+  feeLifetimeAmount Float?
+  launchDate        DateTime?
+  logoUri           String?
+  description       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  creators          TokenCreator[]
+  riskScores        RiskScore[]
+
+  @@map("ecosystem_tokens")
+}
+
+model TokenCreator {
+  id                String   @id @default(cuid())
+  tokenMint         String
+  wallet            String
+  role              String?
+  royaltyPercentage Float?
+  provider          String?
+  displayName       String?
+  avatarUri         String?
+  twitterHandle     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  token             EcosystemToken @relation(fields: [tokenMint], references: [mint])
+
+  @@unique([tokenMint, wallet])
+  @@map("token_creators")
+}
+
+model RiskScore {
+  id                  String   @id @default(cuid())
+  tokenMint           String
+  liquidityStress     Float    @default(0)
+  whaleConcentration  Float    @default(0)
+  rewardEfficiency    Float    @default(0)
+  overallScore        Float    @default(0)
+  riskLevel           String   @default("unknown") // low | medium | high | critical
+  computedAt          DateTime @default(now())
+
+  token               EcosystemToken @relation(fields: [tokenMint], references: [mint])
+
+  @@map("risk_scores")
+}
+
+model SyncLog {
+  id         String   @id @default(cuid())
+  mint       String?
+  source     String   // bags | helius
+  status     String   // success | error
+  message    String?
+  durationMs Int?
+  createdAt  DateTime @default(now())
+
+  @@map("sync_logs")
+}

@@ -1,0 +1,169 @@
+name: ESSCOR CI/CD
+
+on:
+  push:
+    branches: [main, Adib]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: "20"
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  # ─── Backend tests ───────────────────────────────────────────────────────────
+  backend-test:
+    name: Backend Tests (Node.js)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: esscor
+          POSTGRES_PASSWORD: esscor_pass
+          POSTGRES_DB: esscor_db
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend deps
+        run: npm ci
+        working-directory: backend
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://esscor:esscor_pass@localhost:5432/esscor_db
+
+      - name: Push DB schema
+        run: npx prisma db push --skip-generate
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://esscor:esscor_pass@localhost:5432/esscor_db
+
+      - name: Run Jest tests
+        run: npm test
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://esscor:esscor_pass@localhost:5432/esscor_db
+          BAGS_API_KEY: ${{ secrets.BAGS_API_KEY }}
+          BAGS_BASE_URL: https://public-api-v2.bags.fm/api/v1
+          HELIUS_API_KEY: ${{ secrets.HELIUS_API_KEY }}
+          NODE_ENV: test
+
+  # ─── Analytics tests ──────────────────────────────────────────────────────────
+  analytics-test:
+    name: Analytics Tests (Python)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: analytics/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+        working-directory: analytics
+
+      - name: Run pytest
+        run: python -m pytest tests/ -v --tb=short
+        working-directory: analytics
+        env:
+          DATABASE_URL: postgresql://esscor:esscor_pass@localhost:5432/esscor_db
+          HELIUS_API_KEY: ${{ secrets.HELIUS_API_KEY }}
+          BAGS_API_KEY: ${{ secrets.BAGS_API_KEY }}
+          BAGS_BASE_URL: https://public-api-v2.bags.fm/api/v1
+
+  # ─── Frontend lint + build ────────────────────────────────────────────────────
+  frontend-build:
+    name: Frontend Build (Next.js)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+        working-directory: frontend
+
+      - name: Lint
+        run: npm run lint
+        working-directory: frontend
+
+      - name: Build
+        run: npm run build
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:3001
+          NEXT_PUBLIC_ANALYTICS_URL: http://localhost:8000
+
+  # ─── Deploy backend to Railway ────────────────────────────────────────────────
+  deploy-backend:
+    name: Deploy Backend → Railway
+    needs: [backend-test, analytics-test]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy backend service
+        run: railway up --service esscor-backend --detach
+        working-directory: backend
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Deploy analytics service
+        run: railway up --service esscor-analytics --detach
+        working-directory: analytics
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+  # ─── Deploy frontend to Vercel ────────────────────────────────────────────────
+  deploy-frontend:
+    name: Deploy Frontend → Vercel
+    needs: [frontend-build]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel
+
+      - name: Deploy to Vercel
+        run: vercel --prod --yes --token=${{ secrets.VERCEL_TOKEN }}
+        working-directory: frontend
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}

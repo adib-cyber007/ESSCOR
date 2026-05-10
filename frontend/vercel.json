@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "installCommand": "npm ci",
+  "env": {
+    "NEXT_PUBLIC_API_URL": "@esscor_api_url",
+    "NEXT_PUBLIC_ANALYTICS_URL": "@esscor_analytics_url"
+  }
+}
